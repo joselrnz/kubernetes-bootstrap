@@ -160,9 +160,10 @@ RELEASE="${RELEASE%.*}"
 case "$OS" in
     "ubuntu"|"debian")
         install_packages apt-transport-https ca-certificates curl gpg
-        curl -fsSL "https://pkgs.k8s.io/core:/stable:/${RELEASE}/deb/Release.key" | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+        mkdir -p /etc/apt/keyrings
+        curl -fsSL "https://pkgs.k8s.io/core:/stable:/${RELEASE}/deb/Release.key" | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg --yes
         echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/${RELEASE}/deb/ /" > /etc/apt/sources.list.d/kubernetes.list
-        apt-get update -qq
+        DEBIAN_FRONTEND=noninteractive apt-get update -qq
         install_packages kubelet kubeadm
         apt-mark hold kubelet kubeadm
         systemctl enable --now kubelet
@@ -186,11 +187,11 @@ esac
 # Handle control plane setup
 if [[ "${CONTROL_PLANE,,}" == "yes" ]]; then
     echo "Setting up control plane..."
-    kubeadm init --pod-network-cidr=192.168.0.0/16 --yes
+    kubeadm init --pod-network-cidr=192.168.0.0/16
 
     USER_HOME=$(eval echo ~${SUDO_USER:-$USER})
     mkdir -p "$USER_HOME/.kube"
-    cp -i /etc/kubernetes/admin.conf "$USER_HOME/.kube/config"
+    cp -f /etc/kubernetes/admin.conf "$USER_HOME/.kube/config"
     chown "$(id -u ${SUDO_USER:-$USER}):$(id -g ${SUDO_USER:-$USER})" "$USER_HOME/.kube/config"
 
     echo "******************************************"
