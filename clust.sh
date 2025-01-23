@@ -77,8 +77,8 @@ fi
 install_packages() {
     case "$OS" in
         "ubuntu"|"debian")
-            apt-get update -y -qq && apt-get upgrade -y -qq
-            apt-get install -y "$@" -qq
+            DEBIAN_FRONTEND=noninteractive apt-get update -y -qq && apt-get upgrade -y -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install -y "$@" -qq
             ;;
         "rhel"|"centos"|"fedora"|"rocky"|"almalinux"|"amzn")
             dnf update -y -q
@@ -112,9 +112,9 @@ CNI_VERSION=$(curl -sSL "https://api.github.com/repos/containernetworking/plugin
 if [[ "$ARCH" == "x86_64" ]]; then
     # Install containerd
     echo "Installing containerd..."
-    wget -q "https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/containerd-${CONTAINERD_VERSION}-linux-amd64.tar.gz"
-    tar Cxzf /usr/local "containerd-${CONTAINERD_VERSION}-linux-amd64.tar.gz"
-    rm "containerd-${CONTAINERD_VERSION}-linux-amd64.tar.gz"
+    wget -q "https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/containerd-${CONTAINERD_VERSION}-linux-amd64.tar.gz" -O /tmp/containerd.tar.gz
+    tar Cxzf /usr/local /tmp/containerd.tar.gz
+    rm /tmp/containerd.tar.gz
     if ! command -v containerd >/dev/null 2>&1; then
         echo "containerd installation failed."
         exit 1
@@ -126,15 +126,15 @@ if [[ "$ARCH" == "x86_64" ]]; then
 
     # Install runc
     echo "Installing runc..."
-    wget -q "https://github.com/opencontainers/runc/releases/download/${RUNC_VERSION}/runc.amd64"
-    install -m 755 runc.amd64 /usr/local/sbin/runc
+    wget -q "https://github.com/opencontainers/runc/releases/download/${RUNC_VERSION}/runc.amd64" -O /usr/local/sbin/runc
+    chmod +x /usr/local/sbin/runc
 
     # Install CNI plugins
-    echo "Installing CNI plugin..."
+    echo "Installing CNI plugins..."
     mkdir -p /opt/cni/bin
-    wget -q "https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-amd64-${CNI_VERSION}.tgz"
-    tar Cxzf /opt/cni/bin "cni-plugins-linux-amd64-${CNI_VERSION}.tgz"
-    rm "cni-plugins-linux-amd64-${CNI_VERSION}.tgz"
+    wget -q "https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-amd64-${CNI_VERSION}.tgz" -O /tmp/cni-plugins.tgz
+    tar Cxzf /opt/cni/bin /tmp/cni-plugins.tgz
+    rm /tmp/cni-plugins.tgz
 else
     echo "Unsupported architecture: $ARCH"
     exit 1
@@ -186,7 +186,7 @@ esac
 # Handle control plane setup
 if [[ "${CONTROL_PLANE,,}" == "yes" ]]; then
     echo "Setting up control plane..."
-    kubeadm init --pod-network-cidr=192.168.0.0/16
+    kubeadm init --pod-network-cidr=192.168.0.0/16 --yes
 
     USER_HOME=$(eval echo ~${SUDO_USER:-$USER})
     mkdir -p "$USER_HOME/.kube"
