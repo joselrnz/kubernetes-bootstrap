@@ -166,6 +166,7 @@ case "$OS" in
         DEBIAN_FRONTEND=noninteractive apt-get update -qq
         install_packages kubelet kubeadm
         apt-mark hold kubelet kubeadm
+        apt-get install kubectl
         systemctl enable --now kubelet
         ;;
     "rhel"|"centos"|"fedora"|"rocky"|"almalinux"|"amzn")
@@ -193,7 +194,11 @@ if [[ "${CONTROL_PLANE,,}" == "yes" ]]; then
     mkdir -p "$USER_HOME/.kube"
     cp -f /etc/kubernetes/admin.conf "$USER_HOME/.kube/config"
     chown "$(id -u ${SUDO_USER:-$USER}):$(id -g ${SUDO_USER:-$USER})" "$USER_HOME/.kube/config"
-
+    ####
+    kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/tigera-operator.yaml
+    curl https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/custom-resources.yaml -O
+    kubectl apply -f custom-resources.yaml
+#####
     echo "******************************************"
     echo "            Join Command                 "
     echo "******************************************"
