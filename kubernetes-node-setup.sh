@@ -3,7 +3,7 @@
 set -e  # Exit immediately if any command fails
 trap 'log_error "Script failed at line $LINENO with exit code $?"' ERR
 
-# Function for Java-style logging
+# Function for logging
 log_info() {
     local timestamp
     timestamp=$(date +"%Y-%m-%d %H:%M:%S")
@@ -214,8 +214,9 @@ if [[ "${CONTROL_PLANE,,}" == "yes" ]]; then
     curl -O https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/custom-resources.yaml
     kubectl apply -f custom-resources.yaml
 
-    log_info "Join command:"
+    log_info "##################  Join command:  ##################"
     kubeadm token create --print-join-command
+    log_info "#####################################################"
 else
     log_info "Worker node setup complete. Use 'kubeadm join' to connect to the cluster."
 fi
