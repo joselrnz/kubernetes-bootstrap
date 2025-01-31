@@ -141,25 +141,82 @@ install_packages() {
 install_packages jq iproute2
 
 # ============================================
-# Detect System Architecture
+# Detect System Architecture and Install Containerd, Runc, and CNI Plugins
 # ============================================
 ARCH=$(uname -m)
 log_info "Detected architecture: $ARCH"
+
+ARCH=$(uname -m)
+echo "Detected architecture: $ARCH"
+
+CONTAINERD_VERSION=$(curl -sSL "https://api.github.com/repos/containerd/containerd/releases/latest" | jq -r '.tag_name' | sed 's/^v//')
+RUNC_VERSION=$(curl -sSL "https://api.github.com/repos/opencontainers/runc/releases/latest" | jq -r '.tag_name')
+CNI_VERSION=$(curl -sSL "https://api.github.com/repos/containernetworking/plugins/releases/latest" | jq -r '.tag_name')
+
+if [[ "$ARCH" == "x86_64" ]]; then
+    # Install containerd
+    echo "Installing containerd..."
+    wget -q "https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/containerd-${CONTAINERD_VERSION}-linux-amd64.tar.gz" -O /tmp/containerd.tar.gz
+    tar Cxzf /usr/local /tmp/containerd.tar.gz
+    rm /tmp/containerd.tar.gz
+    if ! command -v containerd >/dev/null 2>&1; then
+        echo "containerd installation failed."
+        exit 1
+    fi
+    mkdir -p /usr/local/lib/systemd/system/
+    curl -o /usr/local/lib/systemd/system/containerd.service https://raw.githubusercontent.com/containerd/containerd/main/containerd.service
+    systemctl daemon-reload
+    systemctl enable --now containerd
+
+    # Install runc
+    echo "Installing runc..."
+    wget -q "https://github.com/opencontainers/runc/releases/download/${RUNC_VERSION}/runc.amd64" -O /usr/local/sbin/runc
+    chmod +x /usr/local/sbin/runc
+
+    # Install CNI plugins
+    echo "Installing CNI plugins..."
+    mkdir -p /opt/cni/bin
+    wget -q "https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-amd64-${CNI_VERSION}.tgz" -O /tmp/cni-plugins.tgz
+    tar Cxzf /opt/cni/bin /tmp/cni-plugins.tgz
+    rm /tmp/cni-plugins.tgz
+else
+    echo "Unsupported architecture: $ARCH"
+    exit 1
+fi
+
+# Configure containerd
+echo "Configuring containerd..."
+mkdir -p /etc/containerd
+containerd config default > /etc/containerd/config.toml
+
+config_file="/etc/containerd/config.toml"
+sed -i 's/disabled_plugins.*cri.*/disabled_plugins = []/' "$config_file"
+sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' "$config_file"
+sed -i "/\[plugins\.'io\.containerd\.grpc\.v1\.cri'\]/a\    sandbox_image = \"registry.k8s.io\/pause:3.10\"" "$config_file"
+
+systemctl restart containerd
+
 
 # ============================================
 # Install Kubernetes Components
 # ============================================
 log_info "Installing Kubernetes..."
 
+# Install Kubernetes components
+
+RELEASE="$(curl -sSL https://dl.k8s.io/release/stable.txt)"
+RELEASE="${RELEASE%.*}"
+
 case "$OS" in
     "ubuntu"|"debian")
         install_packages apt-transport-https ca-certificates curl gpg
         mkdir -p /etc/apt/keyrings
-        curl -fsSL "https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key" | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-        echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /" > /etc/apt/sources.list.d/kubernetes.list
-        apt-get update -qq
-        install_packages kubelet kubeadm kubectl
-        apt-mark hold kubelet kubeadm kubectl
+        curl -fsSL "https://pkgs.k8s.io/core:/stable:/${RELEASE}/deb/Release.key" | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg --yes
+        echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/${RELEASE}/deb/ /" > /etc/apt/sources.list.d/kubernetes.list
+        DEBIAN_FRONTEND=noninteractive apt-get update -qq
+        install_packages kubelet kubeadm
+        apt-mark hold kubelet kubeadm
+        apt-get install kubectl
         systemctl enable --now kubelet
         ;;
     "rhel"|"centos"|"fedora"|"rocky"|"almalinux"|"amzn")
@@ -168,12 +225,12 @@ case "$OS" in
         cat <<EOF > /etc/yum.repos.d/kubernetes.repo
 [kubernetes]
 name=Kubernetes
-baseurl=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/
+baseurl=https://pkgs.k8s.io/core:/stable:/${RELEASE}/rpm/
 enabled=1
 gpgcheck=1
-gpgkey=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/repodata/repomd.xml.key
+gpgkey=https://pkgs.k8s.io/core:/stable:/${RELEASE}/rpm/repodata/repomd.xml.key
 EOF
-        install_packages kubelet kubeadm kubectl
+        install_packages kubelet kubeadm
         systemctl enable kubelet
         ;;
 esac
